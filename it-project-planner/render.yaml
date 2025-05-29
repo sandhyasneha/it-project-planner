@@ -1,3 +1,5 @@
+Think_PM_Clean_Final_Deploy  cd /Desktop/Think_PM_Clean_Final
+
 services:
   - type: web
     name: it-project-planner
