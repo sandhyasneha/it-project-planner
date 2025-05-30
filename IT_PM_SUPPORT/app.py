@@ -2,19 +2,19 @@ import os
 import streamlit as st
 import openai
 
-# Set API key from environment variable
+# Load OpenAI API key from environment
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Streamlit UI setup
+# UI setup
 st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
 st.title("🛠️ IT Project Planner")
 
-# User input
+# Input area
 user_input = st.text_area("Describe your project:")
 
-# Generate plan using OpenAI
+# Generate plan
 if st.button("Generate Plan") and user_input:
-    with st.spinner("Generating..."):
+    with st.spinner("Generating plan..."):
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-3.5-turbo",
