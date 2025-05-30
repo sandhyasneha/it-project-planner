@@ -2,10 +2,8 @@ import os
 import streamlit as st
 import openai
 
-# Set API key
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Streamlit UI
 st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
 st.title("🛠️ IT Project Planner")
 
