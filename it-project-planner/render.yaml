@@ -1,9 +1,0 @@
-Think_PM_Clean_Final_Deploy  cd /Desktop/Think_PM_Clean_Final
-
-services:
-  - type: web
-    name: it-project-planner
-    env: python
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run app.py --server.port=10000 --server.enableCORS=false
