@@ -1,45 +1,30 @@
 import os
 import streamlit as st
-from twilio.rest import Client
-from twilio.base.exceptions import TwilioRestException
+import openai
 
-print("📦 Starting Streamlit UI...")
+# Load OpenAI API key from environment
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
+# UI setup
+st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
+st.title("🛠️ IT Project Planner")
 
-import os
-from streamlit.web import bootstrap
+# Input area
+user_input = st.text_area("Describe your project:")
 
-# Dynamically get the correct port
-port = int(os.environ.get("PORT", 8501))
-
-# Start the Streamlit app from code
-bootstrap.run(
-    "streamlit_ui.py",
-    "",
-    [],
-    {
-        "server.port": port,
-        "server.enableCORS": False,
-        "server.enableXsrfProtection": False
-    }
-)
-
-st.title("🚀 Streamlit + Twilio is Running!")
-
-TWILIO_SID = os.getenv("TWILIO_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
-
-st.write("TWILIO_SID loaded:", TWILIO_SID is not None)
-
-if TWILIO_SID and TWILIO_AUTH_TOKEN:
-    try:
-        client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
-        acc = client.api.accounts(TWILIO_SID).fetch()
-        st.success(f"✅ Twilio connected! Account: {acc.friendly_name}")
-    except TwilioRestException as e:
-        st.error(f"❌ Twilio error: {e.msg}")
-    except Exception as ex:
-        st.error(f"❌ Unexpected error: {str(ex)}")
-else:
-    st.warning("⚠️ Twilio credentials not found in environment.")
+# Generate plan
+if st.button("Generate Plan") and user_input:
+    with st.spinner("Generating plan..."):
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "You are an expert IT project manager."},
+                    {"role": "user", "content": user_input}
+                ],
+                max_tokens=800
+            )
+            plan = response.choices[0].message.content
+            st.markdown(plan)
+        except Exception as e:
+            st.error(f"Error: {e}")
