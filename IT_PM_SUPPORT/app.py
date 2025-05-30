@@ -26,4 +26,3 @@ if st.button("Generate Plan") and user_input:
             st.markdown(plan)
         except Exception as e:
             st.error(f"Error: {e}")
-
