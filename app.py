@@ -1,51 +1,114 @@
 import os
 import streamlit as st
+import sqlite3
+import hashlib
 from openai import OpenAI
-import traceback
-import time
+import pyttsx3
+import pyperclip
+import speech_recognition as sr
 
-# Set Streamlit page config
+# ----- CONFIG -----
 st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
-
-# Load API key from environment
 api_key = os.getenv("OPENAI_API_KEY")
 st.write(f"API Key loaded: {api_key is not None}")
-
-if not api_key:
-    st.error("❌ OPENAI_API_KEY not found in environment!")
-    st.stop()
-
 client = OpenAI(api_key=api_key)
 
-st.title("🛠️ IT Project Planner")
-user_input = st.text_area("Describe your project:")
+# ----- DB HELPERS -----
+def make_hashes(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-# Retry wrapper (basic)
-def fetch_plan_with_retry():
-    for i in range(3):
+def verify_hashes(password, hashed_text):
+    return make_hashes(password) == hashed_text
+
+def create_usertable():
+    conn = sqlite3.connect('users.db')
+    conn.execute('CREATE TABLE IF NOT EXISTS userstable(email TEXT, password TEXT)')
+    conn.commit()
+    conn.close()
+
+def add_userdata(email, password):
+    conn = sqlite3.connect('users.db')
+    conn.execute('INSERT INTO userstable(email, password) VALUES (?, ?)', (email, make_hashes(password)))
+    conn.commit()
+    conn.close()
+
+def login_user(email, password):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM userstable WHERE email = ? AND password = ?', (email, make_hashes(password)))
+    data = c.fetchall()
+    conn.close()
+    return data
+
+# ----- LOGIN -----
+create_usertable()
+menu = ["Login", "SignUp"]
+choice = st.sidebar.selectbox("Menu", menu)
+logged_in = False
+
+if choice == "Login":
+    st.sidebar.subheader("Login")
+    email = st.sidebar.text_input("Email")
+    password = st.sidebar.text_input("Password", type="password")
+    if st.sidebar.button("Login"):
+        if not email.endswith("@nttdata.com"):
+            st.sidebar.error("Only @nttdata.com emails allowed")
+        elif login_user(email, password):
+            st.sidebar.success(f"Welcome {email}")
+            logged_in = True
+        else:
+            st.sidebar.error("Invalid credentials")
+
+elif choice == "SignUp":
+    st.sidebar.subheader("Create Account")
+    email = st.sidebar.text_input("New Email")
+    password = st.sidebar.text_input("New Password", type="password")
+    if st.sidebar.button("Create Account"):
+        if not email.endswith("@nttdata.com"):
+            st.sidebar.error("Only @nttdata.com emails allowed")
+        else:
+            add_userdata(email, password)
+            st.sidebar.success("Account created!")
+
+# ----- MAIN APP -----
+if logged_in:
+    st.title("🛠️ IT Project Planner")
+    user_input = st.text_area("Describe your project:")
+
+    if st.button("Generate Plan") and user_input:
+        with st.spinner("Generating..."):
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are an expert IT project manager."},
+                        {"role": "user", "content": user_input}
+                    ],
+                    max_tokens=800
+                )
+                plan = response.choices[0].message.content
+                st.markdown(plan)
+
+                if st.button("📋 Copy Plan"):
+                    pyperclip.copy(plan)
+                    st.success("Copied to clipboard!")
+
+                if st.button("🔊 Play Plan"):
+                    engine = pyttsx3.init()
+                    engine.say(plan)
+                    engine.runAndWait()
+
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    # Voice input
+    if st.button("🎙️ Dictate (local mic only)"):
         try:
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are an expert IT project manager."},
-                    {"role": "user", "content": user_input}
-                ],
-                max_tokens=800
-            )
-            return response.choices[0].message.content
+            recognizer = sr.Recognizer()
+            with sr.Microphone() as source:
+                st.info("Listening...")
+                audio = recognizer.listen(source)
+            user_input = recognizer.recognize_google(audio)
+            st.success(f"Recognized: {user_input}")
         except Exception as e:
-            if i < 2:
-                st.warning(f"Retry {i+1}/3... Error: {e}")
-                time.sleep(2)
-            else:
-                raise
-
-if st.button("Generate Plan") and user_input:
-    with st.spinner("Generating plan..."):
-        try:
-            plan = fetch_plan_with_retry()
-            st.markdown(plan)
-        except Exception as e:
-            st.error("Error: Could not fetch project plan.")
-            st.text(traceback.format_exc())
-
+            st.error(f"Voice error: {e}")
