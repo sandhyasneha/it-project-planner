@@ -1,21 +1,21 @@
-import os
 import streamlit as st
-from openai import OpenAI
-
-# Initialize OpenAI client
-st.write("API Key loaded:", bool(os.getenv("OPENAI_API_KEY")))
-
-# Streamlit UI setup
 st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
-st.title("🛠️ IT Project Planner")
 
-# Text input
+import os
+import openai
+
+# Debug: check API key is loaded
+st.write("API Key loaded:", os.getenv("OPENAI_API_KEY") is not None)
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+st.title("🛠️ IT Project Planner")
 user_input = st.text_area("Describe your project:")
 
-# Generate plan
 if st.button("Generate Plan") and user_input:
-    with st.spinner("Generating plan..."):
+    with st.spinner("Generating..."):
         try:
+            client = openai.OpenAI(api_key=openai.api_key)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -28,3 +28,4 @@ if st.button("Generate Plan") and user_input:
             st.markdown(plan)
         except Exception as e:
             st.error(f"Error: {e}")
+
