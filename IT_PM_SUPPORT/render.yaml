@@ -1,5 +1,4 @@
 services:
-  - services:
   - type: web
     name: it-project-planner
     env: python
