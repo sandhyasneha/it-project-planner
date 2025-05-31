@@ -2,10 +2,10 @@ import os
 import streamlit as st
 import sqlite3
 import hashlib
-from openai import OpenAI
 import pyttsx3
 import pyperclip
 import speech_recognition as sr
+from openai import OpenAI
 
 # ----- CONFIG -----
 st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
@@ -75,6 +75,18 @@ if logged_in:
     st.title("🛠️ IT Project Planner")
     user_input = st.text_area("Describe your project:")
 
+    # Voice input
+    if st.button("🎙️ Dictate (local mic only)"):
+        try:
+            recognizer = sr.Recognizer()
+            with sr.Microphone() as source:
+                st.info("Listening...")
+                audio = recognizer.listen(source)
+            user_input = recognizer.recognize_google(audio)
+            st.success(f"Recognized: {user_input}")
+        except Exception as e:
+            st.error(f"Voice error: {e}")
+
     if st.button("Generate Plan") and user_input:
         with st.spinner("Generating..."):
             try:
@@ -100,15 +112,3 @@ if logged_in:
 
             except Exception as e:
                 st.error(f"Error: {e}")
-
-    # Voice input
-    if st.button("🎙️ Dictate (local mic only)"):
-        try:
-            recognizer = sr.Recognizer()
-            with sr.Microphone() as source:
-                st.info("Listening...")
-                audio = recognizer.listen(source)
-            user_input = recognizer.recognize_google(audio)
-            st.success(f"Recognized: {user_input}")
-        except Exception as e:
-            st.error(f"Voice error: {e}")
