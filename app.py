@@ -3,17 +3,15 @@ import streamlit as st
 import sqlite3
 import hashlib
 from openai import OpenAI
-import pyttsx3
 import pyperclip
-import speech_recognition as sr
 
-# --- CONFIG ---
+# ----- CONFIG -----
 st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
 api_key = os.getenv("OPENAI_API_KEY")
 st.write(f"API Key loaded: {api_key is not None}")
 client = OpenAI(api_key=api_key)
 
-# --- DB SETUP ---
+# ----- DB HELPERS -----
 def make_hashes(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -21,36 +19,48 @@ def verify_hashes(password, hashed_text):
     return make_hashes(password) == hashed_text
 
 def create_usertable():
-    with sqlite3.connect('users.db') as conn:
-        conn.execute('CREATE TABLE IF NOT EXISTS userstable(email TEXT, password TEXT)')
-        conn.commit()
+    conn = sqlite3.connect('users.db')
+    conn.execute('CREATE TABLE IF NOT EXISTS userstable(email TEXT, password TEXT)')
+    conn.execute('CREATE TABLE IF NOT EXISTS plans(email TEXT, plan TEXT)')
+    conn.commit()
+    conn.close()
 
 def add_userdata(email, password):
-    with sqlite3.connect('users.db') as conn:
-        conn.execute('INSERT INTO userstable(email, password) VALUES (?, ?)', (email, make_hashes(password)))
-        conn.commit()
+    conn = sqlite3.connect('users.db')
+    conn.execute('INSERT INTO userstable(email, password) VALUES (?, ?)', (email, make_hashes(password)))
+    conn.commit()
+    conn.close()
 
 def login_user(email, password):
-    with sqlite3.connect('users.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM userstable WHERE email = ? AND password = ?', (email, make_hashes(password)))
-        return cursor.fetchall()
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM userstable WHERE email = ? AND password = ?', (email, make_hashes(password)))
+    data = c.fetchall()
+    conn.close()
+    return data
 
+def save_plan(email, plan):
+    conn = sqlite3.connect('users.db')
+    conn.execute('INSERT INTO plans(email, plan) VALUES (?, ?)', (email, plan))
+    conn.commit()
+    conn.close()
+
+def get_user_plans(email):
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('SELECT plan FROM plans WHERE email = ?', (email,))
+    plans = c.fetchall()
+    conn.close()
+    return [p[0] for p in plans]
+
+# ----- LOGIN -----
 create_usertable()
-
-# --- SESSION STATE INIT ---
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'email' not in st.session_state:
-    st.session_state.email = ""
-if 'user_input' not in st.session_state:
-    st.session_state.user_input = ""
-if 'plan' not in st.session_state:
-    st.session_state.plan = ""
-
-# --- LOGIN UI ---
 menu = ["Login", "SignUp"]
 choice = st.sidebar.selectbox("Menu", menu)
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.email = ""
 
 if choice == "Login":
     st.sidebar.subheader("Login")
@@ -60,9 +70,9 @@ if choice == "Login":
         if not email.endswith("@nttdata.com"):
             st.sidebar.error("Only @nttdata.com emails allowed")
         elif login_user(email, password):
+            st.sidebar.success(f"Welcome {email}")
             st.session_state.logged_in = True
             st.session_state.email = email
-            st.sidebar.success(f"Welcome {email}")
         else:
             st.sidebar.error("Invalid credentials")
 
@@ -77,9 +87,14 @@ elif choice == "SignUp":
             add_userdata(email, password)
             st.sidebar.success("Account created!")
 
-# --- MAIN APP ---
+# ----- MAIN APP -----
 if st.session_state.logged_in:
     st.title("🛠️ IT Project Planner")
+
+    if "user_input" not in st.session_state:
+        st.session_state.user_input = ""
+    if "generated_plan" not in st.session_state:
+        st.session_state.generated_plan = ""
 
     st.session_state.user_input = st.text_area("Describe your project:", value=st.session_state.user_input)
 
@@ -94,34 +109,32 @@ if st.session_state.logged_in:
                     ],
                     max_tokens=800
                 )
-                st.session_state.plan = response.choices[0].message.content
+                plan = response.choices[0].message.content
+                st.session_state.generated_plan = plan
+                save_plan(st.session_state.email, plan)
             except Exception as e:
                 st.error(f"Error: {e}")
 
-    if st.session_state.plan:
+    if st.session_state.generated_plan:
         st.subheader("Generated Plan")
-        st.markdown(st.session_state.plan)
+        st.markdown(st.session_state.generated_plan)
 
         if st.button("📋 Copy Plan"):
-            pyperclip.copy(st.session_state.plan)
+            pyperclip.copy(st.session_state.generated_plan)
             st.success("Copied to clipboard!")
 
-        if st.button("🔊 Play Plan"):
-            try:
-                engine = pyttsx3.init()
-                engine.say(st.session_state.plan)
-                engine.runAndWait()
-            except Exception as e:
-                st.error(f"Voice output error: {e}")
+        # Play and Dictate features are disabled to avoid PyAudio dependency issue
+        st.info("Voice features temporarily disabled due to PyAudio deployment limitations.")
 
-    if st.button("🎙️ Dictate (local mic only)"):
-        try:
-            recognizer = sr.Recognizer()
-            with sr.Microphone() as source:
-                st.info("Listening...")
-                audio = recognizer.listen(source)
-            result = recognizer.recognize_google(audio)
-            st.session_state.user_input = result
-            st.success(f"Recognized: {result}")
-        except Exception as e:
-            st.error(f"Voice input error: {e}")
+        st.download_button(
+            label="📄 Download Plan as .txt",
+            data=st.session_state.generated_plan,
+            file_name="project_plan.txt",
+            mime="text/plain"
+        )
+
+    if st.checkbox("Show Plan History"):
+        st.subheader("Your Past Plans")
+        past_plans = get_user_plans(st.session_state.email)
+        for i, p in enumerate(past_plans[::-1]):
+            st.markdown(f"**Plan {len(past_plans) - i}:**\n{p}")
