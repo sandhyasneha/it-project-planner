@@ -7,23 +7,13 @@ import pyttsx3
 import pyperclip
 import speech_recognition as sr
 
-# Set Streamlit page config
+# ----- CONFIG -----
 st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
-
-# Load API key
 api_key = os.getenv("OPENAI_API_KEY")
 st.write(f"API Key loaded: {api_key is not None}")
 client = OpenAI(api_key=api_key)
 
-# Session state initialization
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "user_input" not in st.session_state:
-    st.session_state.user_input = ""
-if "plan" not in st.session_state:
-    st.session_state.plan = ""
-
-# DB setup
+# ----- DB HELPERS -----
 def make_hashes(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -50,10 +40,11 @@ def login_user(email, password):
     conn.close()
     return data
 
-# Authentication UI
+# ----- LOGIN -----
 create_usertable()
 menu = ["Login", "SignUp"]
 choice = st.sidebar.selectbox("Menu", menu)
+logged_in = False
 
 if choice == "Login":
     st.sidebar.subheader("Login")
@@ -64,7 +55,7 @@ if choice == "Login":
             st.sidebar.error("Only @nttdata.com emails allowed")
         elif login_user(email, password):
             st.sidebar.success(f"Welcome {email}")
-            st.session_state.logged_in = True
+            logged_in = True
         else:
             st.sidebar.error("Invalid credentials")
 
@@ -79,52 +70,58 @@ elif choice == "SignUp":
             add_userdata(email, password)
             st.sidebar.success("Account created!")
 
-# Main app only if logged in
-if st.session_state.logged_in:
+# ----- MAIN APP -----
+if logged_in:
     st.title("🛠️ IT Project Planner")
 
-    st.session_state.user_input = st.text_area("Describe your project:", value=st.session_state.user_input)
+    # Initialize session state
+    if "plan" not in st.session_state:
+        st.session_state["plan"] = ""
+    if "user_input" not in st.session_state:
+        st.session_state["user_input"] = ""
 
-    col1, col2 = st.columns([1, 1])
+    user_input = st.text_area("Describe your project:", value=st.session_state["user_input"])
+    st.session_state["user_input"] = user_input
 
-    with col1:
-        if st.button("Generate Plan"):
+    if st.button("Generate Plan") and user_input:
+        with st.spinner("Generating..."):
             try:
-                with st.spinner("Generating..."):
-                    response = client.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": "You are an expert IT project manager."},
-                            {"role": "user", "content": st.session_state.user_input}
-                        ],
-                        max_tokens=800
-                    )
-                    st.session_state.plan = response.choices[0].message.content
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are an expert IT project manager."},
+                        {"role": "user", "content": user_input}
+                    ],
+                    max_tokens=800
+                )
+                st.session_state["plan"] = response.choices[0].message.content
             except Exception as e:
                 st.error(f"Error: {e}")
 
-    with col2:
-        if st.button("🎙️ Dictate"):
-            try:
-                recognizer = sr.Recognizer()
-                with sr.Microphone() as source:
-                    st.info("Listening...")
-                    audio = recognizer.listen(source)
-                text = recognizer.recognize_google(audio)
-                st.session_state.user_input = text
-                st.success(f"Recognized: {text}")
-            except Exception as e:
-                st.error(f"Voice error: {e}")
+    # Show the generated plan
+    if st.session_state["plan"]:
+        st.markdown(st.session_state["plan"])
 
-    if st.session_state.plan:
-        st.markdown("### Generated Plan")
-        st.markdown(st.session_state.plan)
+    # Copy to clipboard
+    if st.button("📋 Copy Plan") and st.session_state["plan"]:
+        pyperclip.copy(st.session_state["plan"])
+        st.success("Copied to clipboard!")
 
-        if st.button("📋 Copy Plan"):
-            pyperclip.copy(st.session_state.plan)
-            st.success("Copied to clipboard!")
+    # Play the plan via text-to-speech
+    if st.button("🔊 Play Plan") and st.session_state["plan"]:
+        engine = pyttsx3.init()
+        engine.say(st.session_state["plan"])
+        engine.runAndWait()
 
-        if st.button("🔊 Play Plan"):
-            engine = pyttsx3.init()
-            engine.say(st.session_state.plan)
-            engine.runAndWait()
+    # Voice input
+    if st.button("🎙️ Dictate (local mic only)"):
+        try:
+            recognizer = sr.Recognizer()
+            with sr.Microphone() as source:
+                st.info("Listening...")
+                audio = recognizer.listen(source)
+            recognized = recognizer.recognize_google(audio)
+            st.session_state["user_input"] = recognized
+            st.success(f"Recognized: {recognized}")
+        except Exception as e:
+            st.error(f"Voice error: {e}")
