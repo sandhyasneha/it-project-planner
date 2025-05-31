@@ -3,7 +3,8 @@ import streamlit as st
 from openai import OpenAI
 
 # Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+st.write("API Key loaded:", bool(os.getenv("OPENAI_API_KEY")))
+
 
 # Streamlit UI setup
 st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
