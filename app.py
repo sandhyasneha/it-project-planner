@@ -1,21 +1,20 @@
-import streamlit as st
-st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
-
 import os
-import openai
+import streamlit as st
+from openai import OpenAI
 
-# Debug: check API key is loaded
-st.write("API Key loaded:", os.getenv("OPENAI_API_KEY") is not None)
-
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
+st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
 st.title("🛠️ IT Project Planner")
+
+api_key = os.getenv("OPENAI_API_KEY")
+st.write("API Key loaded:", bool(api_key))  # Debug
+
+client = OpenAI(api_key=api_key)
+
 user_input = st.text_area("Describe your project:")
 
 if st.button("Generate Plan") and user_input:
     with st.spinner("Generating..."):
         try:
-            client = openai.OpenAI(api_key=openai.api_key)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
