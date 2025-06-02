@@ -4,23 +4,18 @@ import sqlite3
 import hashlib
 from openai import OpenAI
 import pyttsx3
+import pyperclip
 import speech_recognition as sr
+from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-# Page configuration
+# ----- CONFIG -----
 st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
-
-# Load API Key
 api_key = os.getenv("OPENAI_API_KEY")
 st.write(f"API Key loaded: {api_key is not None}")
 client = OpenAI(api_key=api_key)
-
-# Session state initialization
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "user_input" not in st.session_state:
-    st.session_state.user_input = ""
-if "plan" not in st.session_state:
-    st.session_state.plan = ""
 
 # ----- DB HELPERS -----
 def make_hashes(password):
@@ -49,9 +44,42 @@ def login_user(email, password):
     conn.close()
     return data
 
+def get_all_users():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('SELECT email FROM userstable')
+    data = c.fetchall()
+    conn.close()
+    return [email[0] for email in data]
+
+# ----- EMAIL HELPER -----
+def send_reminder_to_all():
+    sender_email = os.getenv("SENDER_EMAIL")
+    sender_password = os.getenv("SENDER_PASSWORD")
+    users = get_all_users()
+
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['Subject'] = "Weekly Timesheet Reminder"
+    body = "Hello team, please update your time sheet before end of the day."
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(sender_email, sender_password)
+            for email in users:
+                msg['To'] = email
+                server.sendmail(sender_email, email, msg.as_string())
+        st.success("Reminder sent to all users.")
+    except Exception as e:
+        st.error(f"Error sending emails: {e}")
+
 # ----- LOGIN -----
 create_usertable()
 menu = ["Login", "SignUp"]
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.user_email = ""
 choice = st.sidebar.selectbox("Menu", menu)
 
 if choice == "Login":
@@ -62,8 +90,9 @@ if choice == "Login":
         if not email.endswith("@nttdata.com"):
             st.sidebar.error("Only @nttdata.com emails allowed")
         elif login_user(email, password):
-            st.sidebar.success(f"Welcome {email}")
             st.session_state.logged_in = True
+            st.session_state.user_email = email
+            st.sidebar.success(f"Welcome {email}")
         else:
             st.sidebar.error("Invalid credentials")
 
@@ -78,55 +107,70 @@ elif choice == "SignUp":
             add_userdata(email, password)
             st.sidebar.success("Account created!")
 
-# ----- MAIN APP -----
 if st.session_state.logged_in:
+    if st.sidebar.button("Logout"):
+        st.session_state.logged_in = False
+        st.session_state.user_email = ""
+        st.experimental_rerun()
+
+if st.session_state.logged_in:
+    user_email = st.session_state.user_email
     st.title("🛠️ IT Project Planner")
 
-    st.session_state.user_input = st.text_area("Describe your project:", value=st.session_state.user_input)
+    # Timesheet prompt
+    if "time sheet" in st.session_state.get("input_text", "").lower() and "george@nttdata.com" == user_email:
+        today = datetime.today().strftime('%A')
+        if today == "Friday":
+            if st.confirm("Today is Friday. Can I send the timesheet update request to all?"):
+                send_reminder_to_all()
+        else:
+            if st.confirm(f"Hi George, today is {today}. Do you still want to send the reminder?"):
+                send_reminder_to_all()
 
-    if st.button("Generate Plan"):
-        with st.spinner("Generating..."):
+    if 'input_text' not in st.session_state:
+        st.session_state.input_text = ""
+    if 'generated_plan' not in st.session_state:
+        st.session_state.generated_plan = ""
+
+    st.session_state.input_text = st.text_area("Describe your project:", st.session_state.input_text)
+
+    if st.button("Generate Plan") and st.session_state.input_text:
+        with st.spinner("Generating plan..."):
             try:
                 response = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
                         {"role": "system", "content": "You are an expert IT project manager."},
-                        {"role": "user", "content": st.session_state.user_input}
+                        {"role": "user", "content": st.session_state.input_text}
                     ],
                     max_tokens=800
                 )
-                st.session_state.plan = response.choices[0].message.content
+                st.session_state.generated_plan = response.choices[0].message.content
             except Exception as e:
                 st.error(f"Error: {e}")
 
-    if st.session_state.plan:
-        st.markdown(st.session_state.plan)
+    if st.session_state.generated_plan:
+        st.markdown(st.session_state.generated_plan)
 
-        # Download button
-        st.download_button(
-            label="📥 Download Plan (.txt)",
-            data=st.session_state.plan,
-            file_name="project_plan.txt",
-            mime="text/plain"
-        )
+        if st.button("📋 Copy Plan"):
+            pyperclip.copy(st.session_state.generated_plan)
+            st.success("Copied to clipboard!")
 
         if st.button("🔊 Play Plan"):
-            try:
-                engine = pyttsx3.init()
-                engine.say(st.session_state.plan)
-                engine.runAndWait()
-            except Exception as e:
-                st.error(f"Voice error: {e}")
+            engine = pyttsx3.init()
+            engine.say(st.session_state.generated_plan)
+            engine.runAndWait()
 
-    if st.button("🎙️ Dictate (local mic only)"):
+        st.download_button("📅 Download Plan", st.session_state.generated_plan, file_name="plan.txt")
+
+    if st.button("🎤 Dictate (local mic only)"):
         try:
             recognizer = sr.Recognizer()
             with sr.Microphone() as source:
                 st.info("Listening...")
                 audio = recognizer.listen(source)
             text = recognizer.recognize_google(audio)
-            st.session_state.user_input = text
+            st.session_state.input_text = text
             st.success(f"Recognized: {text}")
         except Exception as e:
             st.error(f"Voice error: {e}")
-
