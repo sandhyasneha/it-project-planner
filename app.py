@@ -80,6 +80,7 @@ menu = ["Login", "SignUp"]
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_email = ""
+    st.session_state.confirm_send = None
 choice = st.sidebar.selectbox("Menu", menu)
 
 if choice == "Login":
@@ -124,16 +125,19 @@ if st.session_state.logged_in:
 
     st.session_state.input_text = st.text_area("Describe your project:", st.session_state.input_text)
 
-    # George timesheet reminder prompt logic
-    if user_email.lower() == "george@nttdata.com":
-        if "please send time sheet update request to all" in st.session_state.input_text.lower():
-            today = datetime.today().strftime("%A")
-            if datetime.today().weekday() == 4:  # Friday
-                if st.button("Today is Friday. Send timesheet reminder now?"):
-                    send_reminder_to_all()
-            else:
-                if st.button(f"Hi George, today is {today}. Do you still want to send the reminder?"):
-                    send_reminder_to_all()
+    # George special logic
+    if user_email == "george@nttdata.com" and "time sheet" in st.session_state.input_text.lower():
+        today = datetime.today().strftime('%A')
+        if today != "Friday" and st.session_state.confirm_send is None:
+            st.warning(f"Hi George, today is {today}. Do you still want me to send the timesheet reminder?")
+            if st.button("Yes, send it"): 
+                send_reminder_to_all()
+                st.session_state.confirm_send = True
+            elif st.button("No, cancel"): 
+                st.session_state.confirm_send = False
+        elif today == "Friday" and st.session_state.confirm_send is None:
+            send_reminder_to_all()
+            st.session_state.confirm_send = True
 
     if st.button("Generate Plan") and st.session_state.input_text:
         with st.spinner("Generating plan..."):
@@ -157,17 +161,17 @@ if st.session_state.logged_in:
             try:
                 pyperclip.copy(st.session_state.generated_plan)
                 st.success("Copied to clipboard!")
-            except pyperclip.PyperclipException:
-                st.warning("Clipboard function is not supported on this system.")
+            except:
+                st.warning("Clipboard copy not supported on this platform.")
 
         if st.button("🔊 Play Plan"):
             engine = pyttsx3.init()
             engine.say(st.session_state.generated_plan)
             engine.runAndWait()
 
-        st.download_button("📥 Download Plan", st.session_state.generated_plan, file_name="plan.txt")
+        st.download_button("📅 Download Plan", st.session_state.generated_plan, file_name="plan.txt")
 
-    if st.button("🎙️ Dictate (local mic only)"):
+    if st.button("🎧 Dictate (local mic only)"):
         try:
             recognizer = sr.Recognizer()
             with sr.Microphone() as source:
