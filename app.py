@@ -80,7 +80,6 @@ menu = ["Login", "SignUp"]
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_email = ""
-    st.session_state.confirm_send = None
 choice = st.sidebar.selectbox("Menu", menu)
 
 if choice == "Login":
@@ -118,26 +117,23 @@ if st.session_state.logged_in:
     user_email = st.session_state.user_email
     st.title("🛠️ IT Project Planner")
 
+    # George prompt on login if not Friday
+    if user_email.lower() == "george@nttdata.com" and datetime.today().weekday() != 4:
+        st.info(f"Hi George, today is {datetime.today().strftime('%A')}. Do you want me to send a timesheet reminder to the team?")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Yes, Send Now"):
+                st.success("Reminder message sent.")
+        with col2:
+            if st.button("No"):
+                st.info("Reminder cancelled.")
+
     if 'input_text' not in st.session_state:
         st.session_state.input_text = ""
     if 'generated_plan' not in st.session_state:
         st.session_state.generated_plan = ""
 
     st.session_state.input_text = st.text_area("Describe your project:", st.session_state.input_text)
-
-    # George special logic
-    if user_email == "george@nttdata.com" and "time sheet" in st.session_state.input_text.lower():
-        today = datetime.today().strftime('%A')
-        if today != "Friday" and st.session_state.confirm_send is None:
-            st.warning(f"Hi George, today is {today}. Do you still want me to send the timesheet reminder?")
-            if st.button("Yes, send it"): 
-                send_reminder_to_all()
-                st.session_state.confirm_send = True
-            elif st.button("No, cancel"): 
-                st.session_state.confirm_send = False
-        elif today == "Friday" and st.session_state.confirm_send is None:
-            send_reminder_to_all()
-            st.session_state.confirm_send = True
 
     if st.button("Generate Plan") and st.session_state.input_text:
         with st.spinner("Generating plan..."):
@@ -162,16 +158,19 @@ if st.session_state.logged_in:
                 pyperclip.copy(st.session_state.generated_plan)
                 st.success("Copied to clipboard!")
             except:
-                st.warning("Clipboard copy not supported on this platform.")
+                st.warning("Clipboard not supported in this environment.")
 
         if st.button("🔊 Play Plan"):
-            engine = pyttsx3.init()
-            engine.say(st.session_state.generated_plan)
-            engine.runAndWait()
+            try:
+                engine = pyttsx3.init()
+                engine.say(st.session_state.generated_plan)
+                engine.runAndWait()
+            except:
+                st.warning("Text-to-speech not supported in this environment.")
 
-        st.download_button("📅 Download Plan", st.session_state.generated_plan, file_name="plan.txt")
+        st.download_button("📥 Download Plan", st.session_state.generated_plan, file_name="plan.txt")
 
-    if st.button("🎧 Dictate (local mic only)"):
+    if st.button("🎙️ Dictate (local mic only)"):
         try:
             recognizer = sr.Recognizer()
             with sr.Microphone() as source:
