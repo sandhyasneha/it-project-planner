@@ -4,13 +4,12 @@ import sqlite3
 import hashlib
 from openai import OpenAI
 import pyttsx3
+import pyperclip
 import speech_recognition as sr
 from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import platform
-import streamlit.components.v1 as components
 
 # ----- CONFIG -----
 st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
@@ -59,21 +58,20 @@ def send_reminder_to_all():
     sender_password = os.getenv("SENDER_PASSWORD")
     users = get_all_users()
 
-    msg = MIMEMultipart()
-    msg['From'] = sender_email
-    msg['Subject'] = "Weekly Timesheet Reminder"
-    body = "Team, gentle reminder to update your time sheet without fail."
-    msg.attach(MIMEText(body, 'plain'))
+    for recipient in users:
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = recipient
+        msg['Subject'] = "Weekly Timesheet Reminder"
+        body = "Hello team, please update your time sheet before end of the day."
+        msg.attach(MIMEText(body, 'plain'))
 
-    try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(sender_email, sender_password)
-            for email in users:
-                msg['To'] = email
-                server.sendmail(sender_email, email, msg.as_string())
-        st.success("Reminder sent to all users.")
-    except Exception as e:
-        st.error(f"Error sending emails: {e}")
+        try:
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+                server.login(sender_email, sender_password)
+                server.send_message(msg)
+        except Exception as e:
+            st.error(f"Failed to send to {recipient}: {e}")
 
 # ----- LOGIN -----
 create_usertable()
@@ -118,9 +116,18 @@ if st.session_state.logged_in:
     user_email = st.session_state.user_email
     st.title("🛠️ IT Project Planner")
 
-    if user_email == "george@nttdata.com" and datetime.today().weekday() == 4:
-        if st.button("Send Timesheet Reminder"):
-            send_reminder_to_all()
+    # Timesheet reminder logic
+    if user_email == "george@nttdata.com":
+        prompt = st.text_input("Prompt (e.g. please send time sheet update request to all):")
+        if prompt.strip().lower() == "please send time sheet update request to all":
+            today = datetime.today()
+            weekday = today.strftime('%A')
+            if today.weekday() == 4:
+                if st.button(f"Today is {weekday}. Send reminder now?"):
+                    send_reminder_to_all()
+            else:
+                if st.button(f"Today is {weekday}. Still send reminder?"):
+                    send_reminder_to_all()
 
     if 'input_text' not in st.session_state:
         st.session_state.input_text = ""
@@ -148,17 +155,19 @@ if st.session_state.logged_in:
         st.markdown(st.session_state.generated_plan)
 
         if st.button("📋 Copy Plan"):
-            components.html(f"""
-            <script>
-                navigator.clipboard.writeText({repr(st.session_state.generated_plan)});
-                alert("Copied to clipboard!");
-            </script>
-            """, height=0)
+            try:
+                pyperclip.copy(st.session_state.generated_plan)
+                st.success("Copied to clipboard!")
+            except Exception:
+                st.warning("Clipboard copy not supported in this environment.")
 
         if st.button("🔊 Play Plan"):
-            engine = pyttsx3.init()
-            engine.say(st.session_state.generated_plan)
-            engine.runAndWait()
+            try:
+                engine = pyttsx3.init()
+                engine.say(st.session_state.generated_plan)
+                engine.runAndWait()
+            except Exception:
+                st.warning("Voice playback not supported on this system.")
 
         st.download_button("📥 Download Plan", st.session_state.generated_plan, file_name="plan.txt")
 
