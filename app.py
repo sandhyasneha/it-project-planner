@@ -58,20 +58,21 @@ def send_reminder_to_all():
     sender_password = os.getenv("SENDER_PASSWORD")
     users = get_all_users()
 
-    for recipient in users:
-        msg = MIMEMultipart()
-        msg['From'] = sender_email
-        msg['To'] = recipient
-        msg['Subject'] = "Weekly Timesheet Reminder"
-        body = "Hello team, please update your time sheet before end of the day."
-        msg.attach(MIMEText(body, 'plain'))
+    msg = MIMEMultipart()
+    msg['From'] = sender_email
+    msg['Subject'] = "Weekly Timesheet Reminder"
+    body = "Team, gentle reminder to update your time sheet without fail."
+    msg.attach(MIMEText(body, 'plain'))
 
-        try:
-            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-                server.login(sender_email, sender_password)
-                server.send_message(msg)
-        except Exception as e:
-            st.error(f"Failed to send to {recipient}: {e}")
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(sender_email, sender_password)
+            for email in users:
+                msg['To'] = email
+                server.sendmail(sender_email, email, msg.as_string())
+        st.success("Reminder sent to all users.")
+    except Exception as e:
+        st.error(f"Error sending emails: {e}")
 
 # ----- LOGIN -----
 create_usertable()
@@ -116,25 +117,23 @@ if st.session_state.logged_in:
     user_email = st.session_state.user_email
     st.title("🛠️ IT Project Planner")
 
-    # Timesheet reminder logic
-    if user_email == "george@nttdata.com":
-        prompt = st.text_input("Prompt (e.g. please send time sheet update request to all):")
-        if prompt.strip().lower() == "please send time sheet update request to all":
-            today = datetime.today()
-            weekday = today.strftime('%A')
-            if today.weekday() == 4:
-                if st.button(f"Today is {weekday}. Send reminder now?"):
-                    send_reminder_to_all()
-            else:
-                if st.button(f"Today is {weekday}. Still send reminder?"):
-                    send_reminder_to_all()
-
     if 'input_text' not in st.session_state:
         st.session_state.input_text = ""
     if 'generated_plan' not in st.session_state:
         st.session_state.generated_plan = ""
 
     st.session_state.input_text = st.text_area("Describe your project:", st.session_state.input_text)
+
+    # George timesheet reminder prompt logic
+    if user_email.lower() == "george@nttdata.com":
+        if "please send time sheet update request to all" in st.session_state.input_text.lower():
+            today = datetime.today().strftime("%A")
+            if datetime.today().weekday() == 4:  # Friday
+                if st.button("Today is Friday. Send timesheet reminder now?"):
+                    send_reminder_to_all()
+            else:
+                if st.button(f"Hi George, today is {today}. Do you still want to send the reminder?"):
+                    send_reminder_to_all()
 
     if st.button("Generate Plan") and st.session_state.input_text:
         with st.spinner("Generating plan..."):
@@ -158,16 +157,13 @@ if st.session_state.logged_in:
             try:
                 pyperclip.copy(st.session_state.generated_plan)
                 st.success("Copied to clipboard!")
-            except Exception:
-                st.warning("Clipboard copy not supported in this environment.")
+            except pyperclip.PyperclipException:
+                st.warning("Clipboard function is not supported on this system.")
 
         if st.button("🔊 Play Plan"):
-            try:
-                engine = pyttsx3.init()
-                engine.say(st.session_state.generated_plan)
-                engine.runAndWait()
-            except Exception:
-                st.warning("Voice playback not supported on this system.")
+            engine = pyttsx3.init()
+            engine.say(st.session_state.generated_plan)
+            engine.runAndWait()
 
         st.download_button("📥 Download Plan", st.session_state.generated_plan, file_name="plan.txt")
 
