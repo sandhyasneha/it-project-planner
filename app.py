@@ -4,12 +4,13 @@ import sqlite3
 import hashlib
 from openai import OpenAI
 import pyttsx3
-import pyperclip
 import speech_recognition as sr
 from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import platform
+import streamlit.components.v1 as components
 
 # ----- CONFIG -----
 st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
@@ -61,7 +62,7 @@ def send_reminder_to_all():
     msg = MIMEMultipart()
     msg['From'] = sender_email
     msg['Subject'] = "Weekly Timesheet Reminder"
-    body = "Hello team, please update your time sheet before end of the day."
+    body = "Team, gentle reminder to update your time sheet without fail."
     msg.attach(MIMEText(body, 'plain'))
 
     try:
@@ -117,15 +118,9 @@ if st.session_state.logged_in:
     user_email = st.session_state.user_email
     st.title("🛠️ IT Project Planner")
 
-    # Timesheet prompt
-    if "time sheet" in st.session_state.get("input_text", "").lower() and "george@nttdata.com" == user_email:
-        today = datetime.today().strftime('%A')
-        if today == "Friday":
-            if st.confirm("Today is Friday. Can I send the timesheet update request to all?"):
-                send_reminder_to_all()
-        else:
-            if st.confirm(f"Hi George, today is {today}. Do you still want to send the reminder?"):
-                send_reminder_to_all()
+    if user_email == "george@nttdata.com" and datetime.today().weekday() == 4:
+        if st.button("Send Timesheet Reminder"):
+            send_reminder_to_all()
 
     if 'input_text' not in st.session_state:
         st.session_state.input_text = ""
@@ -153,17 +148,21 @@ if st.session_state.logged_in:
         st.markdown(st.session_state.generated_plan)
 
         if st.button("📋 Copy Plan"):
-            pyperclip.copy(st.session_state.generated_plan)
-            st.success("Copied to clipboard!")
+            components.html(f"""
+            <script>
+                navigator.clipboard.writeText({repr(st.session_state.generated_plan)});
+                alert("Copied to clipboard!");
+            </script>
+            """, height=0)
 
         if st.button("🔊 Play Plan"):
             engine = pyttsx3.init()
             engine.say(st.session_state.generated_plan)
             engine.runAndWait()
 
-        st.download_button("📅 Download Plan", st.session_state.generated_plan, file_name="plan.txt")
+        st.download_button("📥 Download Plan", st.session_state.generated_plan, file_name="plan.txt")
 
-    if st.button("🎤 Dictate (local mic only)"):
+    if st.button("🎙️ Dictate (local mic only)"):
         try:
             recognizer = sr.Recognizer()
             with sr.Microphone() as source:
