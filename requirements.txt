@@ -3,6 +3,8 @@ openai>=1.0.0
 pyttsx3
 speechrecognition
 pyperclip
+python-pptx
+
 
 
 
