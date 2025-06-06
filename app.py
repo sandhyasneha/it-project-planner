@@ -10,8 +10,6 @@ from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from pptx import Presentation
-from pptx.util import Inches
 
 # ----- CONFIG -----
 st.set_page_config(page_title="IT Project Planner", page_icon="🛠️")
@@ -76,19 +74,6 @@ def send_reminder_to_all():
     except Exception as e:
         st.error(f"Error sending emails: {e}")
 
-# ----- PPT GENERATOR -----
-def generate_ppt(subject, content):
-    prs = Presentation()
-    slide_layout = prs.slide_layouts[1]  # Title and Content
-    slide = prs.slides.add_slide(slide_layout)
-    title = slide.shapes.title
-    body = slide.placeholders[1]
-    title.text = subject
-    body.text = content
-    file_path = f"{subject.replace(' ', '_')}.pptx"
-    prs.save(file_path)
-    return file_path
-
 # ----- LOGIN -----
 create_usertable()
 menu = ["Login", "SignUp"]
@@ -126,18 +111,21 @@ if st.session_state.logged_in:
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.session_state.user_email = ""
-        st.experimental_rerun()
+        st.rerun()
 
 if st.session_state.logged_in:
     user_email = st.session_state.user_email
     st.title("🛠️ IT Project Planner")
 
-    if user_email.lower() == "george@nttdata.com" and datetime.today().weekday() != 4:
-        st.sidebar.info("Hi George, today is not Friday. Do you want to send a timesheet reminder?")
-        if st.sidebar.button("Yes, Send Reminder"):
-            st.sidebar.success("Reminder message sent.")
-        elif st.sidebar.button("No"):
-            st.sidebar.info("Cancelled.")
+    today = datetime.today().weekday()
+    if user_email.lower() == "george@nttdata.com":
+        if today == 4:
+            if st.button("Send Timesheet Reminder"):
+                send_reminder_to_all()
+        else:
+            st.info("Hi George, today is not Friday. Do you want me to send the timesheet reminder to the team?")
+            if st.button("Yes, send reminder"):
+                send_reminder_to_all()
 
     if 'input_text' not in st.session_state:
         st.session_state.input_text = ""
@@ -169,7 +157,7 @@ if st.session_state.logged_in:
                 pyperclip.copy(st.session_state.generated_plan)
                 st.success("Copied to clipboard!")
             except Exception as e:
-                st.error("Clipboard error: Please install xclip or xsel on Linux.")
+                st.warning("Clipboard feature not supported in this environment.")
 
         if st.button("🔊 Play Plan"):
             engine = pyttsx3.init()
@@ -177,12 +165,6 @@ if st.session_state.logged_in:
             engine.runAndWait()
 
         st.download_button("📥 Download Plan", st.session_state.generated_plan, file_name="plan.txt")
-
-        # Generate PPT
-        if st.button("📊 Generate PowerPoint"):
-            ppt_file = generate_ppt("Project Plan", st.session_state.generated_plan)
-            with open(ppt_file, "rb") as f:
-                st.download_button("Download PPT", f, file_name=ppt_file, mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
 
     if st.button("🎙️ Dictate (local mic only)"):
         try:
