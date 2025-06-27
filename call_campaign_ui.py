@@ -1,18 +1,17 @@
-# --- Step 1: Set up ---
 import os
 import streamlit as st
 import pandas as pd
 from twilio.rest import Client
-import requests
-import base64
+from tempfile import NamedTemporaryFile
 
-# --- Branding + Page Config ---
+# --- Branding ---
 st.set_page_config(
     page_title="TruckTaxOnline 2290 Call Campaign",
     page_icon="📞",
     layout="centered"
 )
 
+# --- Custom Styles ---
 st.markdown("""
 <style>
 body {background-color: #f6f9fc;}
@@ -40,54 +39,23 @@ st.image("https://www.trucktaxonline.com/assets/logo.png", width=200)
 st.title("📢 TruckTaxOnline — 2290 Call Campaign")
 st.markdown("Reach truckers faster with automated voice calls for 2290 tax reminders.")
 
-# --- Upload section ---
+# --- Upload Section ---
 st.subheader("📁 Upload Customer List")
 uploaded_excel = st.file_uploader("Choose a CSV or Excel file with a 'Phone' column:", type=["csv", "xlsx"])
 
 st.subheader("🎵 Upload Audio File")
-audio_file = st.file_uploader("Upload a WAV or MP3 file", type=["wav", "mp3"])
+uploaded_audio = st.file_uploader("Choose an audio file (MP3 or WAV)", type=["mp3", "wav"])
 
-# --- Start button ---
+# --- Launch Button ---
 deploy_btn = st.button("🚀 Launch Voice Campaign")
 
-# --- Twilio credentials ---
+# --- Twilio Setup ---
 TWILIO_SID = os.getenv("TWILIO_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
 
-# --- GitHub Info (from .streamlit/secrets.toml) ---
-GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-GITHUB_REPO = "sandhyasneha/streamlit-call-campaign"
-GITHUB_PATH = "uploaded_audio"
-
-# --- Upload to GitHub via API ---
-def upload_to_github(audio_file):
-    if not audio_file:
-        return None
-
-    audio_bytes = audio_file.read()
-    b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-    filename = audio_file.name.replace(" ", "_")
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PATH}/{filename}"
-
-    data = {
-        "message": f"Add new audio file {filename}",
-        "content": b64_audio
-    }
-    response = requests.put(url, headers=headers, json=data)
-
-    if response.status_code in [201, 200]:
-        return f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{GITHUB_PATH}/{filename}"
-    else:
-        st.error(f"GitHub upload failed: {response.status_code} {response.text}")
-        return None
-
-# --- Load numbers ---
+# --- Helper to Load Phone Numbers ---
 @st.cache_data
 def load_phone_numbers(file):
     if file.name.endswith(".csv"):
@@ -96,30 +64,32 @@ def load_phone_numbers(file):
         df = pd.read_excel(file)
     return df['Phone'].dropna().astype(str).tolist()
 
-# --- Main Logic ---
+# --- Campaign Logic ---
 if deploy_btn:
-    if not uploaded_excel or not audio_file:
-        st.warning("Please upload both phone list and audio file.")
+    if not uploaded_excel or not uploaded_audio:
+        st.warning("Please upload both a phone list and an audio file.")
     else:
-        st.success("Uploading audio file to GitHub...")
-        audio_url = upload_to_github(audio_file)
+        phone_numbers = load_phone_numbers(uploaded_excel)
 
-        if audio_url:
-            phone_numbers = load_phone_numbers(uploaded_excel)
-            st.success(f"📞 Preparing to call {len(phone_numbers)} customers...")
+        # Save the uploaded audio file temporarily
+        with NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_audio.name)[-1]) as temp_audio:
+            temp_audio.write(uploaded_audio.read())
+            temp_audio_path = temp_audio.name
 
-            for number in phone_numbers:
-                try:
-                    call = client.calls.create(
-                        to=number,
-                        from_=TWILIO_PHONE_NUMBER,
-                        twiml=f'<Response><Play>{audio_url}</Play></Response>'
-                    )
-                    st.info(f"✅ Calling {number}... SID: {call.sid}")
-                except Exception as e:
-                    st.error(f"❌ Failed to call {number}: {e}")
+        st.success(f"📞 Preparing to call {len(phone_numbers)} customers...")
 
-            st.success("🎉 Campaign launched successfully!")
+        for number in phone_numbers:
+            try:
+                call = client.calls.create(
+                    to=number,
+                    from_=TWILIO_PHONE_NUMBER,
+                    twiml=f'<Response><Play>{temp_audio_path}</Play></Response>'
+                )
+                st.info(f"✅ Calling {number}... SID: {call.sid}")
+            except Exception as e:
+                st.error(f"❌ Failed to call {number}: {e}")
+
+        st.success("🎉 Campaign launched successfully!")
 
 # --- Footer ---
 st.markdown("---")
